@@ -3,7 +3,7 @@ version: '3.6'
 services:
   pivxcoin:
     restart: always
-    image: realnuts/docker_pivxd:v4.1.1
+    image: realnuts/docker_pivxd:4.1.1
     ports:
       - "51472:51472"
       - "51473:51473"
