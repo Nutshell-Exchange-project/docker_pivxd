@@ -1,47 +1,57 @@
-FROM debian:buster
-
-ARG VERSION
-
+FROM ubuntu:bionic
 ENV USER_ID ${USER_ID:-1000}
 ENV GROUP_ID ${GROUP_ID:-1000}
+ENV PIVX_DATA=/home/pivx/.pivx
 
 RUN groupadd -g ${GROUP_ID} pivx \
-      && useradd -u ${USER_ID} -g pivx -s /bin/bash -m -d /pivx pivx
+	&& useradd -u ${USER_ID} -g pivx -s /bin/bash -m -d /pivx pivx
 
-RUN apt-get update && apt-get -y upgrade && apt-get install -y wget ca-certificates gpg && \
-  apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+RUN apt-get update -y
 
-COPY checksum.sha256 /root
+RUN apt-get upgrade -y
 
-RUN set -x && \
-      cd /root && \
-  wget -q https://github.com/PIVX-Project/PIVX/releases/download/v${VERSION}/pivx-${VERSION}-x86_64-linux-gnu.tar.gz && \
-      cat checksum.sha256 | grep ${VERSION} | sha256sum -c  && \
-  tar xvf pivx-${VERSION}-x86_64-linux-gnu.tar.gz && \
-  cd pivx-${VERSION} && \
-  mv bin/* /usr/bin/ && \
-  mv share/* /usr/bin/ && \
-  cd /root && \
-  rm -Rf pivx-${VERSION} pivx-${VERSION}-x86_64-linux-gnu.tar.gz
+RUN echo 'debconf debconf/frontend select Noninteractive' | debconf-set-selections
 
-ENV GOSU_VERSION 1.7
-RUN set -x \
-      && apt-get install -y --no-install-recommends \
-              ca-certificates \
-      && wget -O /usr/local/bin/gosu "https://github.com/tianon/gosu/releases/download/$GOSU_VERSION/gosu-$(dpkg --print-architecture)" \
-      && wget -O /usr/local/bin/gosu.asc "https://github.com/tianon/gosu/releases/download/$GOSU_VERSION/gosu-$(dpkg --print-architecture).asc" \
-      && export GNUPGHOME="$(mktemp -d)" \
-      && gpg --keyserver ha.pool.sks-keyservers.net --recv-keys B42F6819007F00F88E364FD4036A9C25BF357DD4 \
-      && gpg --batch --verify /usr/local/bin/gosu.asc /usr/local/bin/gosu \
-      && rm -r "$GNUPGHOME" /usr/local/bin/gosu.asc \
-      && chmod +x /usr/local/bin/gosu \
-      && gosu nobody true
+RUN apt-get install -y dialog apt-utils git nano
 
+RUN apt-get install -y --no-install-recommends \
+        cron \
+        gosu \
+    && rm -rf /var/lib/apt/lists/*
 
-VOLUME ["/pivx"]
-EXPOSE  52472 52473
+RUN apt-get update -y
 
-WORKDIR /pivx
+RUN apt-get install -y -q build-essential libtool autotools-dev automake pkg-config libssl-dev libevent-dev bsdmainutils default-jdk default-jre libgmp-dev
 
-COPY scripts/docker-entrypoint.sh /usr/local/bin/
+RUN apt-get install -y libboost-system-dev libboost-filesystem-dev libboost-chrono-dev libboost-program-options-dev libboost-test-dev libboost-thread-dev
+
+RUN apt-get install software-properties-common -y
+
+RUN add-apt-repository ppa:pivx/pivx -y
+
+RUN apt-get update -y
+
+RUN apt-get install libdb4.8-dev libdb4.8++-dev -y
+
+RUN apt-get install -y libminiupnpc-dev
+
+RUN apt-get install -y libzmq3-dev
+
+RUN cd /tmp && git clone https://github.com/PIVX-Project/PIVX.git && cd ./PIVX && git checkout tags/v4.1.1
+
+RUN cd /tmp/PIVX && ./autogen.sh && ./configure --without-gui && make && make install
+
+RUN rm -rf ./PIVX
+
+EXPOSE 51472 51473
+
+VOLUME ["/home/pivx/.pivx"]
+
+COPY ./docker-entrypoint.sh /usr/local/bin/
+
+RUN chmod 777 /usr/local/bin/docker-entrypoint.sh \
+    && ln -s /usr/local/bin/docker-entrypoint.sh /
+
 ENTRYPOINT ["docker-entrypoint.sh"]
+
+CMD ["pivxd"]
